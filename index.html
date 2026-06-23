@@ -4,12 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>开荒计划 - 文档编辑器</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
 </head>
 <body>
-    <div class="top-bar">
-        <div class="toolbar-group">
-            <select class="heading-select" id="headingSelect">
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <button class="new-doc-btn" id="newDocBtn">➕ 新建文档</button>
+        </div>
+        <div class="doc-list" id="docList"></div>
+    </div>
+
+    <button class="sidebar-toggle" id="sidebarToggle">›</button>
+
+    <div class="main-content" id="mainContent">
+        <div class="editor-header">
+            <div class="width-selector">
+                <button class="width-btn active" data-width="default">默认</button>
+                <button class="width-btn" data-width="wider">较宽</button>
+                <button class="width-btn" data-width="full">全宽</button>
+            </div>
+        </div>
+
+        <div class="floating-toolbar" id="floatingToolbar">
+            <select class="heading-select" id="floatHeadingSelect">
                 <option value="">正文</option>
                 <option value="1">标题 1</option>
                 <option value="2">标题 2</option>
@@ -18,22 +37,20 @@
                 <option value="5">标题 5</option>
                 <option value="6">标题 6</option>
             </select>
-        </div>
-        <div class="toolbar-group">
-            <button class="toolbar-btn" id="boldBtn" title="加粗 (Ctrl+B)">𝐁</button>
-            <button class="toolbar-btn" id="italicBtn" title="斜体 (Ctrl+I)">𝐼</button>
-            <button class="toolbar-btn" id="underlineBtn" title="下划线 (Ctrl+U)">U̲</button>
-            <button class="toolbar-btn" id="strikethroughBtn" title="删除线">S̶</button>
-        </div>
-        <div class="toolbar-group">
-            <div class="color-btn-wrapper">
-                <button class="toolbar-btn" id="colorApplyBtn" title="应用颜色">
-                    <span id="colorPreview" style="color: #333; background-color: #fff7e6; padding: 1px 3px; border-radius: 2px;">A</span>
+            <div class="divider"></div>
+            <button class="toolbar-btn" id="floatBoldBtn" title="加粗">𝐁</button>
+            <button class="toolbar-btn" id="floatItalicBtn" title="斜体">𝐼</button>
+            <button class="toolbar-btn" id="floatUnderlineBtn" title="下划线">U̲</button>
+            <button class="toolbar-btn" id="floatStrikethroughBtn" title="删除线">S̶</button>
+            <div class="divider"></div>
+            <div class="float-color-wrapper">
+                <button class="toolbar-btn" id="floatColorApplyBtn" title="应用颜色">
+                    <span id="floatColorPreview" style="color: #333; background-color: #fff7e6; padding: 1px 3px; border-radius: 2px;">A</span>
                 </button>
-                <button class="toolbar-btn" id="colorDropdownBtn" title="选择颜色">
+                <button class="toolbar-btn" id="floatColorDropdownBtn" title="选择颜色">
                     <span style="color: #666;">▼</span>
                 </button>
-                <div class="color-picker-popup" id="colorPicker">
+                <div class="float-color-picker" id="floatColorPicker">
                     <div class="color-section">
                         <div class="color-section-title">字体颜色</div>
                         <div class="color-grid">
@@ -65,93 +82,32 @@
                             <div class="color-item bg-color" data-color="#ffe7ba" style="background-color: #ffe7ba;"></div>
                         </div>
                     </div>
-                    <div class="color-actions">
-                        <button class="color-action-btn" id="resetColorBtn">恢复默认</button>
-                    </div>
                 </div>
             </div>
+            <div class="divider"></div>
+            <button class="toolbar-btn" id="floatLinkBtn" title="链接">🔗</button>
+            <button class="toolbar-btn" id="floatListBtn" title="列表">☰</button>
+            <button class="toolbar-btn" id="floatNumberedListBtn" title="有序列表">☷</button>
+            <button class="toolbar-btn" id="floatTaskBtn" title="任务列表">☑</button>
+            <button class="toolbar-btn" id="floatImageBtn" title="图片">🖼️</button>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;">
         </div>
-        <div class="toolbar-group">
-            <button class="toolbar-btn" id="addCardBtn">➕ 添加卡片</button>
-        </div>
-        <div class="toolbar-group">
-            <select class="column-select" id="columnSelect">
-                <option value="1">1栏</option>
-                <option value="2" selected>2栏</option>
-                <option value="3">3栏</option>
-                <option value="4">4栏</option>
-            </select>
-        </div>
-        <div class="toolbar-group">
-            <label for="fileInput" class="toolbar-btn" title="插入图片">🖼️</label>
-            <input type="file" id="fileInput" accept="image/*">
-        </div>
-    </div>
 
-    <div class="floating-toolbar" id="floatingToolbar">
-        <button class="toolbar-btn" id="floatBoldBtn" title="加粗">𝐁</button>
-        <button class="toolbar-btn" id="floatItalicBtn" title="斜体">𝐼</button>
-        <button class="toolbar-btn" id="floatUnderlineBtn" title="下划线">U̲</button>
-        <div class="divider"></div>
-        <div class="float-color-wrapper">
-            <button class="toolbar-btn" id="floatColorApplyBtn" title="应用颜色">
-                <span id="floatColorPreview" style="color: #333; background-color: #fff7e6; padding: 1px 3px; border-radius: 2px;">A</span>
-            </button>
-            <button class="toolbar-btn" id="floatColorDropdownBtn" title="选择颜色">
-                <span style="color: #666;">▼</span>
-            </button>
-            <div class="float-color-picker" id="floatColorPicker">
-                <div class="color-section">
-                    <div class="color-section-title">字体颜色</div>
-                    <div class="color-grid">
-                        <div class="color-item font-color" data-color="#1a1a1a" style="background-color: #1a1a1a;"></div>
-                        <div class="color-item font-color" data-color="#f5222d" style="background-color: #f5222d;"></div>
-                        <div class="color-item font-color" data-color="#fa541c" style="background-color: #fa541c;"></div>
-                        <div class="color-item font-color" data-color="#faad14" style="background-color: #faad14;"></div>
-                        <div class="color-item font-color" data-color="#52c41a" style="background-color: #52c41a;"></div>
-                        <div class="color-item font-color" data-color="#1890ff" style="background-color: #1890ff;"></div>
-                        <div class="color-item font-color" data-color="#722ed1" style="background-color: #722ed1;"></div>
-                        <div class="color-item font-color" data-color="#eb2f96" style="background-color: #eb2f96;"></div>
-                        <div class="color-item font-color" data-color="#8c8c8c" style="background-color: #8c8c8c;"></div>
-                        <div class="color-item font-color" data-color="#13c2c2" style="background-color: #13c2c2;"></div>
-                    </div>
+        <div class="link-input-panel" id="linkInputPanel">
+            <input type="text" class="link-input" id="linkInput" placeholder="粘贴或输入链接">
+            <button class="link-confirm-btn" id="linkConfirmBtn">确认</button>
+            <button class="link-cancel-btn" id="linkCancelBtn">×</button>
+        </div>
+
+        <div class="doc-container" id="docContainer">
+            <input type="text" class="doc-title" id="docTitle" value="" placeholder="请输入标题">
+            <div class="save-status" id="saveStatus">已保存</div>
+
+            <div class="editor-wrapper">
+                <div class="floating-add-btn" id="floatingAddBtn"></div>
+                <div class="editor-area" id="editorArea">
+                    <div class="empty-line" contenteditable="true" data-placeholder='输入"/"快速插入内容'></div>
                 </div>
-                <div class="color-section">
-                    <div class="color-section-title">背景颜色</div>
-                    <div class="color-grid">
-                        <div class="color-item bg-color no-color" data-color="" style="background-color: transparent; border: 1px dashed #d9d9d9;"></div>
-                        <div class="color-item bg-color" data-color="#fff7e6" style="background-color: #fff7e6;"></div>
-                        <div class="color-item bg-color" data-color="#fff0f6" style="background-color: #fff0f6;"></div>
-                        <div class="color-item bg-color" data-color="#f6ffed" style="background-color: #f6ffed;"></div>
-                        <div class="color-item bg-color" data-color="#e6fffb" style="background-color: #e6fffb;"></div>
-                        <div class="color-item bg-color" data-color="#e6f7ff" style="background-color: #e6f7ff;"></div>
-                        <div class="color-item bg-color" data-color="#f9f0ff" style="background-color: #f9f0ff;"></div>
-                        <div class="color-item bg-color" data-color="#fffbe6" style="background-color: #fffbe6;"></div>
-                        <div class="color-item bg-color" data-color="#fff1f0" style="background-color: #fff1f0;"></div>
-                        <div class="color-item bg-color" data-color="#fff2e8" style="background-color: #fff2e8;"></div>
-                        <div class="color-item bg-color" data-color="#ffe7ba" style="background-color: #ffe7ba;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="divider"></div>
-        <button class="toolbar-btn" id="floatLinkBtn" title="链接">🔗</button>
-        <button class="toolbar-btn" id="floatCommentBtn" title="评论">💬</button>
-    </div>
-
-    <div class="link-input-panel" id="linkInputPanel">
-        <input type="text" class="link-input" id="linkInput" placeholder="粘贴或输入链接">
-        <button class="link-confirm-btn" id="linkConfirmBtn">确认</button>
-        <button class="link-cancel-btn" id="linkCancelBtn">×</button>
-    </div>
-
-    <div class="doc-container">
-        <input type="text" class="doc-title" id="docTitle" value="" placeholder="请输入标题">
-
-        <div class="editor-wrapper">
-            <div class="floating-add-btn" id="floatingAddBtn"></div>
-            <div class="editor-area" id="editorArea">
-                <div class="empty-line" contenteditable="true" data-placeholder='输入"/"快速插入内容'></div>
             </div>
         </div>
     </div>
