@@ -1,22 +1,20 @@
 class DocumentManager {
     constructor() {
-        this.docsDirectoryHandle = null;
+        this.saveFolderPath = './save/';
     }
 
     async initDirectory() {
-        // 纯localStorage方案，不需要文件系统授权
         return true;
     }
 
     async requestDirectory() {
-        // 不需要选择目录
         return true;
     }
 
     async getDocsList() {
         let docs = [];
         
-        // 从localStorage获取文档列表
+        // 先从localStorage获取文档
         const localStorageDocs = localStorage.getItem('docs');
         if (localStorageDocs) {
             try {
@@ -26,7 +24,51 @@ class DocumentManager {
             }
         }
 
+        // 如果localStorage没有文档，尝试从服务器加载save文件夹中的文档
+        if (docs.length === 0) {
+            try {
+                docs = await this.loadDocsFromServer();
+                if (docs.length > 0) {
+                    localStorage.setItem('docs', JSON.stringify(docs));
+                }
+            } catch (e) {
+                console.warn('从服务器加载文档失败:', e);
+            }
+        }
+
         docs.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        return docs;
+    }
+
+    async loadDocsFromServer() {
+        const docs = [];
+        
+        try {
+            const indexResponse = await fetch(this.saveFolderPath + 'index.json');
+            if (!indexResponse.ok) {
+                return docs;
+            }
+            
+            const fileNames = await indexResponse.json();
+            
+            for (const fileName of fileNames) {
+                if (fileName.endsWith('.json')) {
+                    try {
+                        const fileResponse = await fetch(this.saveFolderPath + fileName);
+                        if (fileResponse.ok) {
+                            const content = await fileResponse.text();
+                            const docData = JSON.parse(content);
+                            docs.push(docData);
+                        }
+                    } catch (e) {
+                        console.warn('加载文档文件失败:', fileName, e);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('加载save目录失败:', e);
+        }
+        
         return docs;
     }
 
@@ -84,7 +126,6 @@ class DocumentManager {
         return await this.getDocsList();
     }
     
-    // 导入文档（用于导入save文件夹中的文件）
     async importDocFromFile(file) {
         try {
             const content = await file.text();
