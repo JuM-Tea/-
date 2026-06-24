@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>开荒计划 - 文档编辑器</title>
+    <title>开荒计划 - 地书</title>
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/layout.css">
     <link rel="stylesheet" href="css/components.css">
@@ -12,6 +12,8 @@
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <button class="new-doc-btn" id="newDocBtn">➕ 新建文档</button>
+            <button class="import-btn" id="importBtn">📥 导入文档</button>
+            <input type="file" id="importFileInput" accept=".json" style="display: none;">
         </div>
         <div class="doc-list" id="docList"></div>
     </div>
@@ -173,6 +175,7 @@
         </div>
     </div>
 
+    <script src="js/docManager.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

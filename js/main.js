@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const saveStatus = document.getElementById('saveStatus');
     const docList = document.getElementById('docList');
     const newDocBtn = document.getElementById('newDocBtn');
+    const importBtn = document.getElementById('importBtn');
+    const importFileInput = document.getElementById('importFileInput');
     const sidebar = document.getElementById('sidebar');
     const sidebarToggle = document.getElementById('sidebarToggle');
     const mainContent = document.getElementById('mainContent');
@@ -66,13 +68,49 @@ document.addEventListener('DOMContentLoaded', function() {
     let isMouseOverAddBtn = false;
     let isLineClicked = false;
     
-    function getDocs() {
-        const docs = localStorage.getItem('docs');
-        return docs ? JSON.parse(docs) : [];
+    // 获取文档列表
+    async function getDocs() {
+        return await docManager.getDocsList();
     }
     
-    function saveDocs(docs) {
-        localStorage.setItem('docs', JSON.stringify(docs));
+    // 获取单个文档
+    async function getDoc(docId) {
+        return await docManager.readDoc(docId);
+    }
+    
+    // 保存文档
+    async function saveDoc(doc) {
+        const hasAccess = await docManager.initDirectory();
+        if (!hasAccess && !localStorage.getItem('docsDirectoryPath')) {
+            const selected = await docManager.requestDirectory();
+            if (!selected) {
+                localStorage.setItem('docsDirectoryPath', 'selected');
+            } else {
+                localStorage.setItem('docsDirectoryPath', 'selected');
+                const selectBtn = document.getElementById('selectFolderBtn');
+                if (selectBtn) {
+                    selectBtn.style.display = 'none';
+                }
+            }
+        }
+        
+        return await docManager.saveDoc(doc);
+    }
+    
+    // 删除文档文件
+    async function deleteDocFile(docId) {
+        const result = await docManager.deleteDoc(docId);
+        
+        if (!result) {
+            const docs = localStorage.getItem('docs');
+            if (docs) {
+                const docsArray = JSON.parse(docs);
+                const filtered = docsArray.filter(d => d.id !== docId);
+                localStorage.setItem('docs', JSON.stringify(filtered));
+            }
+        }
+        
+        return result;
     }
     
     function compressImageDataUrl(dataUrl, maxWidth = 800, quality = 0.8) {
@@ -108,36 +146,36 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function saveCurrentDoc() {
-        if (!currentDocId) return;
+        if (!currentDocId) {
+            saveStatus.textContent = '已保存';
+            saveStatus.classList.remove('saving');
+            return;
+        }
         
         try {
-            const docs = getDocs();
-            const index = docs.findIndex(doc => doc.id === currentDocId);
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = editorArea.innerHTML;
+            tempDiv.querySelectorAll('.insert-area').forEach(el => el.remove());
             
-            if (index !== -1) {
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = editorArea.innerHTML;
-                tempDiv.querySelectorAll('.insert-area').forEach(el => el.remove());
-                
-                const images = tempDiv.querySelectorAll('img');
-                for (const img of images) {
-                    if (img.src.startsWith('data:image/')) {
-                        const compressed = await compressImageDataUrl(img.src);
-                        img.src = compressed;
-                    }
+            const images = tempDiv.querySelectorAll('img');
+            for (const img of images) {
+                if (img.src.startsWith('data:image/')) {
+                    const compressed = await compressImageDataUrl(img.src);
+                    img.src = compressed;
                 }
-                
-                docs[index] = {
-                    ...docs[index],
-                    title: docTitle.value || '未命名文档',
-                    content: tempDiv.innerHTML,
-                    updatedAt: new Date().toISOString()
-                };
-                saveDocs(docs);
-                updateDocList();
-                saveStatus.textContent = '已保存';
-                saveStatus.classList.remove('saving');
             }
+            
+            const doc = {
+                id: currentDocId,
+                title: docTitle.value || '未命名文档',
+                content: tempDiv.innerHTML,
+                updatedAt: new Date().toISOString()
+            };
+            
+            await saveDoc(doc);
+            updateDocList();
+            saveStatus.textContent = '已保存';
+            saveStatus.classList.remove('saving');
         } catch (e) {
             console.error('保存失败:', e);
             saveStatus.textContent = '保存失败';
@@ -151,6 +189,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function triggerSave() {
+        if (!currentDocId) {
+            saveStatus.textContent = '已保存';
+            saveStatus.classList.remove('saving');
+            return;
+        }
+        
         saveStatus.textContent = '保存中...';
         saveStatus.classList.add('saving');
         
@@ -158,25 +202,31 @@ document.addEventListener('DOMContentLoaded', function() {
         saveTimer = setTimeout(saveCurrentDoc, 500);
     }
     
-    function createNewDoc() {
+    async function createNewDoc() {
+        const currentContent = editorArea.innerHTML;
+        const isEmptyState = currentContent.trim() === '' ||
+                            (currentContent.includes('<div class="empty-line"') && 
+                             currentContent.includes('contenteditable="true"') &&
+                             currentContent.includes('data-placeholder'));
+        
         const newDoc = {
             id: Date.now().toString(),
             title: '未命名文档',
-            content: '<div class="empty-line" contenteditable="true" data-placeholder=\'输入"/"快速插入内容\'></div>',
+            content: isEmptyState ? '<div class="empty-line" contenteditable="true" data-placeholder=\'输入"/"快速插入内容\'></div>' : currentContent,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
         
-        const docs = getDocs();
-        docs.unshift(newDoc);
-        saveDocs(docs);
-        
-        loadDoc(newDoc.id);
+        try {
+            await saveDoc(newDoc);
+            await loadDoc(newDoc.id);
+        } catch (e) {
+            console.error('创建文档失败:', e);
+        }
     }
     
-    function loadDoc(docId) {
-        const docs = getDocs();
-        const doc = docs.find(d => d.id === docId);
+    async function loadDoc(docId) {
+        const doc = await getDoc(docId);
         
         if (doc) {
             currentDocId = docId;
@@ -210,21 +260,86 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             });
             
+            const highlights = editorArea.querySelectorAll('.highlight-block');
+            highlights.forEach(highlight => {
+                const actions = highlight.querySelector('.highlight-actions');
+                
+                highlight.addEventListener('mouseenter', function() {
+                    if (actions) actions.style.opacity = '1';
+                });
+                
+                highlight.addEventListener('mouseleave', function() {
+                    if (actions) actions.style.opacity = '0';
+                });
+                
+                highlight.addEventListener('click', function(e) {
+                    if (e.target.closest('.highlight-action-btn')) {
+                        return;
+                    }
+                    
+                    const link = highlight.dataset.link;
+                    if (link && link.trim()) {
+                        window.open(link, '_blank');
+                    } else {
+                        showHighlightEditPanel(highlight);
+                    }
+                });
+                
+                if (actions) {
+                    actions.querySelectorAll('.highlight-action-btn').forEach(btn => {
+                        btn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            
+                            const action = this.dataset.action;
+                            if (action === 'edit') {
+                                showHighlightEditPanel(highlight);
+                            } else if (action === 'add') {
+                                const colors = ['#fff7e6', '#fff0f6', '#f6ffed', '#e6fffb', '#e6f7ff', '#f9f0ff'];
+                                const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                                insertHighlightAfter(highlight, randomColor);
+                            } else if (action === 'delete') {
+                                highlight.remove();
+                                triggerSave();
+                            }
+                        });
+                    });
+                }
+            });
+            
+            const cards = editorArea.querySelectorAll('.card');
+            cards.forEach(card => {
+                setupCardEvents(card);
+            });
+            
             editorArea.focus();
+        } else {
+            // 文档不存在（可能文件被删除了），从列表中移除
+            const docs = await getDocs();
+            const filtered = docs.filter(d => d.id !== docId);
+            if (currentDocId === docId) {
+                if (filtered.length > 0) {
+                    loadDoc(filtered[0].id);
+                } else {
+                    createNewDoc();
+                }
+            }
+            updateDocList();
         }
     }
     
-    function deleteDoc(docId) {
+    async function deleteDoc(docId) {
         if (confirm('确定要删除这个文档吗？')) {
-            let docs = getDocs();
-            docs = docs.filter(doc => doc.id !== docId);
-            saveDocs(docs);
+            await deleteDocFile(docId);
             
             if (currentDocId === docId) {
+                const docs = await getDocs();
                 if (docs.length > 0) {
                     loadDoc(docs[0].id);
                 } else {
-                    createNewDoc();
+                    editorArea.innerHTML = '<div class="empty-line" contenteditable="true" data-placeholder=\'输入"/"快速插入内容\'></div>';
+                    currentDocId = null;
+                    docTitle.value = '未命名文档';
                 }
             }
             
@@ -232,8 +347,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    function updateDocList() {
-        const docs = getDocs();
+    async function updateDocList() {
+        const docs = await getDocs();
         
         docList.innerHTML = docs.map(doc => `
             <div class="doc-item ${doc.id === currentDocId ? 'active' : ''}" data-id="${doc.id}">
@@ -1223,7 +1338,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             highlight.addEventListener('click', function(e) {
-                if (e.target.classList.contains('highlight-action-btn')) {
+                if (e.target.closest('.highlight-action-btn')) {
                     return;
                 }
                 
@@ -1233,6 +1348,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     showHighlightEditPanel(highlight);
                 }
+            });
+            
+            actions.querySelectorAll('.highlight-action-btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    
+                    const action = this.dataset.action;
+                    if (action === 'edit') {
+                        showHighlightEditPanel(highlight);
+                    } else if (action === 'add') {
+                        insertHighlightAfter(highlight, color);
+                    } else if (action === 'delete') {
+                        highlight.remove();
+                        triggerSave();
+                    }
+                });
             });
             
             range.insertNode(highlight);
@@ -1287,7 +1419,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         newHighlight.addEventListener('click', function(e) {
-            if (e.target.classList.contains('highlight-action-btn')) {
+            if (e.target.closest('.highlight-action-btn')) {
                 return;
             }
             
@@ -1297,6 +1429,23 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 showHighlightEditPanel(newHighlight);
             }
+        });
+        
+        actions.querySelectorAll('.highlight-action-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                
+                const action = this.dataset.action;
+                if (action === 'edit') {
+                    showHighlightEditPanel(newHighlight);
+                } else if (action === 'add') {
+                    insertHighlightAfter(newHighlight, color);
+                } else if (action === 'delete') {
+                    newHighlight.remove();
+                    triggerSave();
+                }
+            });
         });
         
         const space = document.createTextNode(' ');
@@ -1481,10 +1630,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const cardClass = cardColorMap[color] || 'card-orange';
             const card = document.createElement('div');
             card.className = `card ${cardClass}`;
+            card.dataset.borderColor = '#d9d9d9';
             card.innerHTML = `
                 <div class="card-title" contenteditable="true">卡片标题</div>
                 <div class="card-content">
                     <div class="empty-line" contenteditable="true" data-placeholder="点击输入内容或使用左侧加号插入"></div>
+                </div>
+                <div class="card-actions">
+                    <button class="card-action-btn" data-action="edit" title="编辑">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    </button>
+                    <button class="card-action-btn" data-action="delete" title="删除">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                    </button>
                 </div>
             `;
             
@@ -1504,6 +1662,8 @@ document.addEventListener('DOMContentLoaded', function() {
             selection.addRange(newRange);
             
             card.focus();
+            
+            setupCardEvents(card);
             
             triggerSave();
         }
@@ -1608,10 +1768,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     showColumnSelectPanel(menuItem, menu);
                     return;
                 } else if (action === 'highlight') {
-                    showHighlightColorPanel(menuItem, menu);
+                    insertHighlightAtCursor('#e6f7ff');
+                    menu.remove();
                     return;
                 } else if (action === 'card') {
-                    showCardColorPanel(menuItem, menu);
+                    insertCardAtCursor('#fff0f6');
+                    menu.remove();
                     return;
                 } else if (action === 'button') {
                     showButtonColorPanel(menuItem, menu);
@@ -2595,6 +2757,63 @@ document.addEventListener('DOMContentLoaded', function() {
     
     newDocBtn.addEventListener('click', createNewDoc);
     
+    importBtn.addEventListener('click', function() {
+        importFileInput.click();
+    });
+    
+    importFileInput.addEventListener('change', async function(e) {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            for (const file of files) {
+                const doc = await docManager.importDocFromFile(file);
+                if (doc) {
+                    console.log('导入成功:', doc.title);
+                }
+            }
+            updateDocList();
+            // 如果没有当前文档，加载第一个导入的文档
+            if (!currentDocId) {
+                const docs = await getDocs();
+                if (docs.length > 0) {
+                    loadDoc(docs[0].id);
+                }
+            }
+        }
+        e.target.value = '';
+    });
+    
+    async function migrateDocs(oldHandle, newHandle) {
+        let migratedCount = 0;
+        let failedCount = 0;
+        
+        try {
+            for await (const [name, entry] of oldHandle.entries()) {
+                if (entry.kind === 'file' && name.endsWith('.json')) {
+                    try {
+                        const file = await entry.getFile();
+                        const fileHandle = await newHandle.getFileHandle(name, { create: true });
+                        const writable = await fileHandle.createWritable();
+                        await writable.write(await file.arrayBuffer());
+                        await writable.close();
+                        
+                        await oldHandle.removeEntry(name);
+                        migratedCount++;
+                    } catch (fileError) {
+                        console.error(`迁移文件 ${name} 失败:`, fileError);
+                        failedCount++;
+                    }
+                }
+            }
+            
+            if (migratedCount > 0) {
+                alert(`成功迁移 ${migratedCount} 个文件` + (failedCount > 0 ? `，${failedCount} 个文件迁移失败` : ''));
+            }
+        } catch (e) {
+            console.error('迁移文件失败:', e);
+            alert('迁移失败');
+        }
+    }
+    
     btnColorPicker.addEventListener('click', function(e) {
         if (e.target.classList.contains('color-option')) {
             btnColorPicker.querySelectorAll('.color-option').forEach(el => el.classList.remove('selected'));
@@ -2696,6 +2915,117 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    function setupCardEvents(card) {
+        const actions = card.querySelector('.card-actions');
+        
+        card.addEventListener('mouseenter', function() {
+            if (actions) actions.style.opacity = '1';
+        });
+        
+        card.addEventListener('mouseleave', function() {
+            if (actions) actions.style.opacity = '0';
+        });
+        
+        if (actions) {
+            actions.querySelectorAll('.card-action-btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    
+                    const action = this.dataset.action;
+                    if (action === 'edit') {
+                        showCardEditPanel(card);
+                    } else if (action === 'delete') {
+                        card.remove();
+                        triggerSave();
+                    }
+                });
+            });
+        }
+    }
+    
+    const borderColors = ['', '#d9d9d9', '#ffccc7', '#ffccc7', '#ffe7ba', '#ffe7ba', '#fff7e6', '#b7eb8f', '#91d5ff', '#d3adf7'];
+    const fillColors = ['', '#ffffff', '#fff0f6', '#fff7e6', '#fffbe6', '#f6ffed', '#e6fffb', '#e6f7ff', '#f9f0ff', '#f5f5f5', '#d9d9d9', '#ffccc7', '#ffe7ba', '#fff7e6', '#b7eb8f', '#91d5ff', '#d3adf7'];
+    
+    function showCardEditPanel(card) {
+        hideAllSubPanels();
+        
+        const panel = document.createElement('div');
+        panel.className = 'card-edit-panel sub-panel';
+        panel.innerHTML = `
+            <div class="form-group">
+                <label class="form-label">边框颜色</label>
+                <div class="color-picker">
+                    ${borderColors.map((color, index) => `
+                        <div class="color-option" data-color="${color}" data-type="border" style="background-color: ${color || '#fff'}; border: 1px solid ${color || '#d9d9d9'};"></div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">填充颜色</label>
+                <div class="color-picker">
+                    ${fillColors.map((color, index) => `
+                        <div class="color-option" data-color="${color}" data-type="fill" style="background-color: ${color || '#fff'};"></div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        const cardRect = card.getBoundingClientRect();
+        panel.style.position = 'fixed';
+        panel.style.left = (cardRect.right + 8) + 'px';
+        panel.style.top = cardRect.top + 'px';
+        panel.style.zIndex = '2000';
+        panel.style.background = 'white';
+        panel.style.borderRadius = '8px';
+        panel.style.boxShadow = '0 4px 16px rgba(0,0,0,0.15)';
+        panel.style.padding = '16px';
+        panel.style.minWidth = '200px';
+        
+        document.body.appendChild(panel);
+        
+        const currentBorderColor = card.dataset.borderColor || '';
+        const currentFillColor = card.style.backgroundColor || '';
+        
+        panel.querySelectorAll('.color-option').forEach(option => {
+            const color = option.dataset.color;
+            const type = option.dataset.type;
+            
+            if (type === 'border' && color === currentBorderColor) {
+                option.classList.add('selected');
+            }
+            if (type === 'fill' && color === currentFillColor) {
+                option.classList.add('selected');
+            }
+            
+            option.addEventListener('click', function() {
+                panel.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+                this.classList.add('selected');
+                
+                if (type === 'border') {
+                    card.dataset.borderColor = color;
+                    if (color) {
+                        card.style.border = `1px solid ${color}`;
+                    } else {
+                        card.style.border = 'none';
+                    }
+                } else {
+                    card.style.backgroundColor = color || '';
+                    Object.values(cardColorMap).forEach(cls => card.classList.remove(cls));
+                }
+                
+                triggerSave();
+            });
+        });
+        
+        document.addEventListener('click', function closePanel(e) {
+            if (!panel.contains(e.target) && !card.contains(e.target)) {
+                panel.remove();
+                document.removeEventListener('click', closePanel);
+            }
+        });
+    }
+    
     sidebarToggle.addEventListener('click', function() {
         sidebar.classList.toggle('collapsed');
         sidebarToggle.classList.toggle('collapsed');
@@ -2718,10 +3048,23 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    const docs = getDocs();
-    if (docs.length > 0) {
-        loadDoc(docs[0].id);
-    } else {
-        createNewDoc();
+    // 初始化加载文档
+    async function initDocs() {
+        let docs = await getDocs();
+        
+        console.log('初始化文档列表:', docs);
+        
+        if (docs.length > 0) {
+            console.log('加载第一个文档:', docs[0].id, docs[0].title);
+            loadDoc(docs[0].id);
+        } else {
+            console.log('没有找到文档，创建新文档');
+            createNewDoc();
+        }
     }
+    
+    // 等待 DOM 准备好后执行
+    setTimeout(() => {
+        initDocs();
+    }, 100);
 });
