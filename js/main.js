@@ -78,22 +78,38 @@ document.addEventListener('DOMContentLoaded', function() {
         return await docManager.readDoc(docId);
     }
     
+    async function compressImageDataUrl(dataUrl, maxWidth = 1200, quality = 0.8) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = function() {
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                const compressed = canvas.toDataURL('image/jpeg', quality);
+                resolve(compressed);
+            };
+            img.onerror = function() {
+                resolve(dataUrl);
+            };
+            img.src = dataUrl;
+        });
+    }
+    
     // 保存文档
     async function saveDoc(doc) {
-        const hasAccess = await docManager.initDirectory();
-        if (!hasAccess && !localStorage.getItem('docsDirectoryPath')) {
-            const selected = await docManager.requestDirectory();
-            if (!selected) {
-                localStorage.setItem('docsDirectoryPath', 'selected');
-            } else {
-                localStorage.setItem('docsDirectoryPath', 'selected');
-                const selectBtn = document.getElementById('selectFolderBtn');
-                if (selectBtn) {
-                    selectBtn.style.display = 'none';
-                }
-            }
-        }
-        
+        await docManager.initDirectory();
         return await docManager.saveDoc(doc);
     }
     
@@ -2734,6 +2750,103 @@ document.addEventListener('DOMContentLoaded', function() {
                     newLine.focus();
                     
                     triggerSave();
+                }
+            }
+        }
+    });
+    
+    editorArea.addEventListener('paste', async function(e) {
+        const items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        
+        for (const item of items) {
+            if (item.type.indexOf('image') !== -1) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        const container = document.createElement('div');
+                        container.className = 'image-container';
+                        container.contentEditable = 'false';
+                        
+                        const img = document.createElement('img');
+                        img.src = event.target.result;
+                        img.draggable = false;
+                        
+                        container.appendChild(img);
+                        
+                        const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+                        handles.forEach(pos => {
+                            const handle = document.createElement('div');
+                            handle.className = 'image-resize-handle ' + pos;
+                            handle.dataset.pos = pos;
+                            container.appendChild(handle);
+                        });
+                        
+                        img.onload = function() {
+                            const currentMaxWidth = Math.max(100, Math.min(editorArea.getBoundingClientRect().width || 800, 900) - 20);
+                            if (img.naturalWidth > currentMaxWidth) {
+                                img.style.maxWidth = currentMaxWidth + 'px';
+                            }
+                        };
+                        
+                        setupImageContainerEvents(container);
+                        
+                        const selection = window.getSelection();
+                        let range;
+                        
+                        if (selection.rangeCount > 0) {
+                            const selRange = selection.getRangeAt(0);
+                            if (selRange.commonAncestorContainer && 
+                                editorArea.contains(selRange.commonAncestorContainer)) {
+                                range = selRange;
+                            }
+                        }
+                        
+                        if (!range && savedSelection && savedSelection.commonAncestorContainer) {
+                            if (editorArea.contains(savedSelection.commonAncestorContainer)) {
+                                range = savedSelection;
+                            }
+                        }
+                        
+                        if (!range && lastCursorPosition && document.caretRangeFromPoint) {
+                            range = document.caretRangeFromPoint(lastCursorPosition.left, lastCursorPosition.top);
+                        }
+                        
+                        if (!range) {
+                            range = document.createRange();
+                            range.selectNodeContents(editorArea);
+                            range.collapse(false);
+                        }
+                        
+                        if (range) {
+                            range.insertNode(container);
+                            
+                            const newLine = document.createElement('div');
+                            newLine.className = 'empty-line';
+                            newLine.contentEditable = 'true';
+                            newLine.addEventListener('keydown', handleKeydown);
+                            newLine.addEventListener('input', function() {
+                                if (newLine.textContent.trim() !== '') {
+                                    newLine.removeAttribute('data-placeholder');
+                                }
+                            });
+                            container.parentNode.insertBefore(newLine, container.nextSibling);
+                            
+                            const newRange = document.createRange();
+                            newRange.selectNodeContents(newLine);
+                            newRange.collapse(true);
+                            const newSelection = window.getSelection();
+                            newSelection.removeAllRanges();
+                            newSelection.addRange(newRange);
+                            savedSelection = newRange.cloneRange();
+                            
+                            triggerSave();
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                    break;
                 }
             }
         }
